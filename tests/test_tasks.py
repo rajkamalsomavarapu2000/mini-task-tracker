@@ -24,7 +24,7 @@ class TestCreateTask:
         assert data["id"] == 1
         assert data["title"] == "Test Task"
         assert data["description"] is None
-        assert data["status"] == "pending"
+        assert data["status"] == "todo"
 
     def test_create_task_full(self):
         """Create a task with all fields."""
@@ -152,7 +152,7 @@ class TestUpdateTask:
         client.post("/tasks", json={
             "title": "Original",
             "description": "Original Description",
-            "status": "pending"
+            "status": "todo"
         })
         
         # Update only title
@@ -160,7 +160,7 @@ class TestUpdateTask:
         data = response.json()
         assert data["title"] == "Updated Title"
         assert data["description"] == "Original Description"
-        assert data["status"] == "pending"
+        assert data["status"] == "todo"
 
 
 class TestDeleteTask:
@@ -186,11 +186,11 @@ class TestDeleteTask:
 class TestStatusValidation:
     """Tests for status validation."""
 
-    def test_valid_status_pending(self):
-        """Status 'pending' is valid."""
-        response = client.post("/tasks", json={"title": "Task", "status": "pending"})
+    def test_valid_status_todo(self):
+        """Status 'todo' is valid."""
+        response = client.post("/tasks", json={"title": "Task", "status": "todo"})
         assert response.status_code == 201
-        assert response.json()["status"] == "pending"
+        assert response.json()["status"] == "todo"
 
     def test_valid_status_in_progress(self):
         """Status 'in_progress' is valid."""
@@ -207,4 +207,71 @@ class TestStatusValidation:
     def test_invalid_status_rejected(self):
         """Invalid status values are rejected."""
         response = client.post("/tasks", json={"title": "Task", "status": "completed"})
+        assert response.status_code == 422
+
+
+class TestPatchTaskStatus:
+    """Tests for PATCH /tasks/{id}/status endpoint."""
+
+    def test_patch_status_to_in_progress(self):
+        """Update task status from todo to in_progress."""
+        create_response = client.post("/tasks", json={"title": "My Task"})
+        task_id = create_response.json()["id"]
+        assert create_response.json()["status"] == "todo"
+        
+        response = client.patch(f"/tasks/{task_id}/status", json={"status": "in_progress"})
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "in_progress"
+        assert data["id"] == task_id
+        assert data["title"] == "My Task"
+
+    def test_patch_status_to_done(self):
+        """Update task status to done."""
+        client.post("/tasks", json={"title": "Task"})
+        
+        response = client.patch("/tasks/1/status", json={"status": "done"})
+        assert response.status_code == 200
+        assert response.json()["status"] == "done"
+
+    def test_patch_status_to_todo(self):
+        """Update task status back to todo."""
+        client.post("/tasks", json={"title": "Task", "status": "done"})
+        
+        response = client.patch("/tasks/1/status", json={"status": "todo"})
+        assert response.status_code == 200
+        assert response.json()["status"] == "todo"
+
+    def test_patch_status_invalid_status(self):
+        """Patching with invalid status returns 422."""
+        client.post("/tasks", json={"title": "Task"})
+        
+        response = client.patch("/tasks/1/status", json={"status": "invalid_status"})
+        assert response.status_code == 422
+
+    def test_patch_status_not_found(self):
+        """Patching status of non-existent task returns 404."""
+        response = client.patch("/tasks/999/status", json={"status": "done"})
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Task not found"
+
+    def test_patch_status_preserves_other_fields(self):
+        """Patching status preserves title and description."""
+        client.post("/tasks", json={
+            "title": "Original Title",
+            "description": "Original Description",
+            "status": "todo"
+        })
+        
+        response = client.patch("/tasks/1/status", json={"status": "in_progress"})
+        data = response.json()
+        assert data["status"] == "in_progress"
+        assert data["title"] == "Original Title"
+        assert data["description"] == "Original Description"
+
+    def test_patch_status_missing_status_field(self):
+        """Patching without status field returns 422."""
+        client.post("/tasks", json={"title": "Task"})
+        
+        response = client.patch("/tasks/1/status", json={})
         assert response.status_code == 422

@@ -6,10 +6,11 @@ A minimal task tracker API built with FastAPI, designed for feature-based code e
 
 - ✅ Health check endpoint
 - ✅ Task CRUD endpoints (create, read, update, delete)
-- ✅ Task status support (pending, in_progress, done)
+- ✅ Task status support (todo, in_progress, done)
 - ✅ Input validation with Pydantic
 - ✅ Comprehensive test coverage
 - ✅ Minimal web UI (no framework)
+- ✅ **UI status updates**: Change task status directly from the task list via dropdown
 
 ## Installation
 
@@ -35,7 +36,7 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 The API will be available at `http://localhost:8000`
 
-**Open http://localhost:8000/ for UI** — a simple web interface to view and create tasks.
+**Open http://localhost:8000/ for UI** — a simple web interface to view, create, and update tasks. Each task in the list has a status dropdown that allows you to change its status (To Do, In Progress, Done) without leaving the page.
 
 ## API Documentation
 
@@ -51,12 +52,13 @@ Once the server is running, visit:
 | POST | `/tasks` | Create a new task |
 | GET | `/tasks` | List all tasks |
 | GET | `/tasks/{id}` | Get a specific task |
-| PUT | `/tasks/{id}` | Update a task |
+| PUT | `/tasks/{id}` | Update a task (all fields) |
+| PATCH | `/tasks/{id}/status` | Update only the task status |
 | DELETE | `/tasks/{id}` | Delete a task |
 
 ### Task Status Values
 
-- `pending` (default)
+- `todo` (default)
 - `in_progress`
 - `done`
 
@@ -94,7 +96,7 @@ curl http://localhost:8000/tasks
 curl http://localhost:8000/tasks/1
 ```
 
-### Update a Task
+### Update a Task (Full Update)
 
 ```bash
 # Update status only
@@ -106,6 +108,25 @@ curl -X PUT http://localhost:8000/tasks/1 \
 curl -X PUT http://localhost:8000/tasks/1 \
   -H "Content-Type: application/json" \
   -d '{"title": "Updated title", "description": "New description", "status": "in_progress"}'
+```
+
+### Update Task Status Only (PATCH)
+
+```bash
+# Change status to in_progress
+curl -X PATCH http://localhost:8000/tasks/1/status \
+  -H "Content-Type: application/json" \
+  -d '{"status": "in_progress"}'
+
+# Change status to done
+curl -X PATCH http://localhost:8000/tasks/1/status \
+  -H "Content-Type: application/json" \
+  -d '{"status": "done"}'
+
+# Change status back to todo
+curl -X PATCH http://localhost:8000/tasks/1/status \
+  -H "Content-Type: application/json" \
+  -d '{"status": "todo"}'
 ```
 
 ### Delete a Task

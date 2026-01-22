@@ -4,7 +4,7 @@ from enum import Enum
 
 
 class TaskStatus(str, Enum):
-    PENDING = "pending"
+    TODO = "todo"
     IN_PROGRESS = "in_progress"
     DONE = "done"
 
@@ -13,7 +13,7 @@ class TaskCreate(BaseModel):
     """Schema for creating a new task."""
     title: str
     description: Optional[str] = None
-    status: TaskStatus = TaskStatus.PENDING
+    status: TaskStatus = TaskStatus.TODO
 
 
 class TaskUpdate(BaseModel):
@@ -23,9 +23,14 @@ class TaskUpdate(BaseModel):
     status: Optional[TaskStatus] = None
 
 
+class StatusUpdate(BaseModel):
+    """Schema for updating only the status of a task."""
+    status: TaskStatus
+
+
 class Task(BaseModel):
     """Full task model with ID."""
     id: int
     title: str
     description: Optional[str] = None
-    status: TaskStatus = TaskStatus.PENDING
+    status: TaskStatus = TaskStatus.TODO

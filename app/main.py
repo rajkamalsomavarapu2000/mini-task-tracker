@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from typing import Dict, List
 
-from app.models import Task, TaskCreate, TaskUpdate, TaskStatus
+from app.models import Task, TaskCreate, TaskUpdate, TaskStatus, StatusUpdate
 
 app = FastAPI(title="Mini Task Tracker", version="1.0.0")
 
@@ -70,7 +70,7 @@ HTML_PAGE = """
             font-size: 0.85em;
             margin-left: 10px;
         }
-        .status-pending { background: #ffc107; color: #000; }
+        .status-todo { background: #ffc107; color: #000; }
         .status-in_progress { background: #17a2b8; color: #fff; }
         .status-done { background: #28a745; color: #fff; }
         .task-description {
@@ -92,6 +92,30 @@ HTML_PAGE = """
             margin-bottom: 20px;
             box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
+        .task-header {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .task-status-select {
+            width: auto;
+            padding: 4px 8px;
+            font-size: 0.85em;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-left: auto;
+        }
+        .task-status-select:disabled {
+            cursor: wait;
+            opacity: 0.6;
+        }
+        .task-error {
+            color: #dc3545;
+            font-size: 0.85em;
+            margin-top: 5px;
+        }
     </style>
 </head>
 <body>
@@ -111,7 +135,7 @@ HTML_PAGE = """
             <div class="form-group">
                 <label for="status">Status</label>
                 <select id="status" name="status">
-                    <option value="pending">Pending</option>
+                    <option value="todo">To Do</option>
                     <option value="in_progress">In Progress</option>
                     <option value="done">Done</option>
                 </select>
@@ -126,6 +150,66 @@ HTML_PAGE = """
     </ul>
     
     <script>
+        function renderStatusDropdown(taskId, currentStatus) {
+            const statuses = [
+                { value: 'todo', label: 'To Do' },
+                { value: 'in_progress', label: 'In Progress' },
+                { value: 'done', label: 'Done' }
+            ];
+            const options = statuses.map(s => 
+                `<option value="${s.value}" ${s.value === currentStatus ? 'selected' : ''}>${s.label}</option>`
+            ).join('');
+            return `<select class="task-status-select" data-task-id="${taskId}" data-current-status="${currentStatus}" onchange="updateTaskStatus(this, ${taskId})">${options}</select>`;
+        }
+        
+        async function updateTaskStatus(selectElement, taskId) {
+            const newStatus = selectElement.value;
+            const previousStatus = selectElement.dataset.currentStatus;
+            const taskItem = selectElement.closest('.task-item');
+            
+            // Remove any existing error message
+            const existingError = taskItem.querySelector('.task-error');
+            if (existingError) existingError.remove();
+            
+            // Disable dropdown while saving
+            selectElement.disabled = true;
+            
+            try {
+                const response = await fetch(`/tasks/${taskId}/status`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: newStatus })
+                });
+                
+                if (response.ok) {
+                    // Update the status badge
+                    const badge = taskItem.querySelector('.task-status');
+                    badge.className = `task-status status-${newStatus}`;
+                    badge.textContent = newStatus.replace('_', ' ');
+                    
+                    // Update the current status data attribute
+                    selectElement.dataset.currentStatus = newStatus;
+                } else {
+                    // Revert dropdown and show error
+                    selectElement.value = previousStatus;
+                    const errorDiv = document.createElement('div');
+                    errorDiv.className = 'task-error';
+                    errorDiv.textContent = 'Failed to update status. Please try again.';
+                    taskItem.appendChild(errorDiv);
+                }
+            } catch (error) {
+                console.error('Failed to update task status:', error);
+                // Revert dropdown and show error
+                selectElement.value = previousStatus;
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'task-error';
+                errorDiv.textContent = 'Failed to update status. Please try again.';
+                taskItem.appendChild(errorDiv);
+            } finally {
+                selectElement.disabled = false;
+            }
+        }
+        
         async function loadTasks() {
             try {
                 const response = await fetch('/tasks');
@@ -138,10 +222,13 @@ HTML_PAGE = """
                 }
                 
                 taskList.innerHTML = tasks.map(task => `
-                    <li class="task-item">
-                        <span class="task-id">#${task.id}</span>
-                        <span class="task-title">${escapeHtml(task.title)}</span>
-                        <span class="task-status status-${task.status}">${task.status.replace('_', ' ')}</span>
+                    <li class="task-item" data-task-id="${task.id}">
+                        <div class="task-header">
+                            <span class="task-id">#${task.id}</span>
+                            <span class="task-title">${escapeHtml(task.title)}</span>
+                            <span class="task-status status-${task.status}">${task.status.replace('_', ' ')}</span>
+                            ${renderStatusDropdown(task.id, task.status)}
+                        </div>
                         ${task.description ? `<div class="task-description">${escapeHtml(task.description)}</div>` : ''}
                     </li>
                 `).join('');
@@ -267,6 +354,23 @@ def update_task(task_id: int, task_data: TaskUpdate) -> Task:
         title=update_data.get("title", existing_task.title),
         description=update_data.get("description", existing_task.description),
         status=update_data.get("status", existing_task.status)
+    )
+    tasks_db[task_id] = updated_task
+    return updated_task
+
+
+@app.patch("/tasks/{task_id}/status", response_model=Task)
+def update_task_status(task_id: int, status_data: StatusUpdate) -> Task:
+    """Update only the status of an existing task."""
+    if task_id not in tasks_db:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    existing_task = tasks_db[task_id]
+    updated_task = Task(
+        id=existing_task.id,
+        title=existing_task.title,
+        description=existing_task.description,
+        status=status_data.status
     )
     tasks_db[task_id] = updated_task
     return updated_task
